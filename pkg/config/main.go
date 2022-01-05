@@ -24,8 +24,8 @@ func InitializeConfig(fs afero.Fs, args []string) (*Config, error) {
 	}
 
 	flags.StringVar(&cfg.RulesPath, "rules", "rules.yaml", "Path to rules file")
-	flags.StringVar(&cfg.RulesPath, "input", "input.csv", "Path to input file")
-	flags.StringVar(&cfg.RulesPath, "output", "output.csv", "Path to output file")
+	flags.StringVar(&cfg.InputPath, "input", "input.csv", "Path to input file")
+	flags.StringVar(&cfg.OutputPath, "output", "output.csv", "Path to output file")
 
 	err := flags.Parse(args)
 	if err != nil {
@@ -42,7 +42,10 @@ func InitializeConfig(fs afero.Fs, args []string) (*Config, error) {
 
 func validate(cfg *Config) error {
 	if _, err := cfg.Fs.Stat(cfg.RulesPath); errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("Rules file path %q does't exit", cfg.RulesPath)
+		return fmt.Errorf("Rules file path %q does't exist", cfg.RulesPath)
+	}
+	if _, err := cfg.Fs.Stat(cfg.InputPath); errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("Input file path %q does't exist", cfg.InputPath)
 	}
 
 	return nil
