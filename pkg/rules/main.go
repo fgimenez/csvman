@@ -3,10 +3,10 @@ package rules
 import (
 	"encoding/csv"
 
+	"github.com/spf13/afero"
 	"gopkg.in/yaml.v2"
 
 	"github.com/fgimenez/csvman/pkg/config"
-	"github.com/spf13/afero"
 )
 
 type SwapColumnRule struct {
