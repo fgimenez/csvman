@@ -2,11 +2,13 @@ package config_test
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
 
 	"github.com/fgimenez/csvman/pkg/config"
+	"github.com/fgimenez/csvman/pkg/testutils"
 )
 
 func Test_InitializeFlags(t *testing.T) {
@@ -74,19 +76,9 @@ func Test_InitializeFlags(t *testing.T) {
 	for _, tc := range tcs {
 		tc := tc
 		t.Run(tc.description, func(t *testing.T) {
-			for path, content := range tc.files {
-				f, err := appFs.Create(path)
-
-				if err != nil {
-					t.Fatalf("Unexpected error %v", err)
-				}
-				defer f.Close()
-
-				_, err = f.WriteString(content)
-
-				if err != nil {
-					t.Fatalf("Unexpected error %v", err)
-				}
+			err := testutils.CreateFiles(appFs, tc.files)
+			if err != nil {
+				t.Fatalf("could not create files %v", err)
 			}
 
 			actualCfg, err := config.InitializeConfig(appFs, tc.args)
@@ -97,13 +89,16 @@ func Test_InitializeFlags(t *testing.T) {
 				if err == nil {
 					t.Fatalf("Expected error didn't happen")
 				}
-				if tc.expectedErrMsg != err.Error() {
+				if tc.expectedErrMsg == "" {
+					t.Fatalf("Expected error message not defined")
+				}
+				if !strings.HasPrefix(err.Error(), tc.expectedErrMsg) {
 					t.Fatalf("Wrong error, expected %q, got %q", tc.expectedErrMsg, err.Error())
 				}
 			}
 
 			if !reflect.DeepEqual(actualCfg, tc.expectedCfg) {
-				t.Fatalf("Actual flags %#v don't match expected flags %#v", actualCfg, tc.expectedCfg)
+				t.Fatalf("Actual config %#v don't match expected config %#v", actualCfg, tc.expectedCfg)
 			}
 		})
 	}
