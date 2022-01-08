@@ -24,6 +24,7 @@ type DropRowRule struct {
 }
 
 type Rules struct {
+	Fs           afero.Fs
 	SwapColumn   []SwapColumnRule   `yaml:"swapColumn,omitempty"`
 	RenameColumn []RenameColumnRule `yaml:"renameColumn,omitempty"`
 	DropRow      []DropRowRule      `yaml:"dropRow,omitempty"`
@@ -34,7 +35,7 @@ func Parse(cfg *config.Config) (*Rules, error) {
 	if err != nil {
 		return nil, err
 	}
-	r := &Rules{}
+	r := &Rules{Fs: cfg.Fs}
 	err = yaml.Unmarshal(yamlFile, r)
 	if err != nil {
 		return nil, err

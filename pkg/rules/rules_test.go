@@ -59,6 +59,7 @@ dropRow:
 				Fs:        appFs,
 			},
 			expectedRules: &rules.Rules{
+				Fs: appFs,
 				SwapColumn: []rules.SwapColumnRule{
 					{
 						OriginIndex: 1,
