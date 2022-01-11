@@ -2,7 +2,6 @@ package config_test
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -82,19 +81,8 @@ func Test_InitializeFlags(t *testing.T) {
 			}
 
 			actualCfg, err := config.InitializeConfig(appFs, tc.args)
-			if !tc.expectedErr && err != nil {
-				t.Fatalf("Unexpected error %v", err)
-			}
-			if tc.expectedErr {
-				if err == nil {
-					t.Fatalf("Expected error didn't happen")
-				}
-				if tc.expectedErrMsg == "" {
-					t.Fatalf("Expected error message not defined")
-				}
-				if !strings.HasPrefix(err.Error(), tc.expectedErrMsg) {
-					t.Fatalf("Wrong error, expected %q, got %q", tc.expectedErrMsg, err.Error())
-				}
+			if err := testutils.CheckError(err, tc.expectedErr, tc.expectedErrMsg); err != nil {
+				t.Fatalf(err.Error())
 			}
 
 			if !reflect.DeepEqual(actualCfg, tc.expectedCfg) {
