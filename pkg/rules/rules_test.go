@@ -1,6 +1,9 @@
 package rules_test
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/csv"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,9 +15,9 @@ import (
 	"github.com/fgimenez/csvman/pkg/testutils"
 )
 
-func Test_Parse(t *testing.T) {
-	var appFs = afero.NewMemMapFs()
+var appFs = afero.NewMemMapFs()
 
+func Test_Parse(t *testing.T) {
 	tcs := []struct {
 		description    string
 		files          map[string]string
@@ -50,8 +53,8 @@ renameColumn:
 - index: 2
   name: newName2
 dropRow:
-- regexp: pattern1
-- regexp: pattern2
+- substring: pattern1
+- substring: pattern2
 `,
 			},
 			inputCfg: &config.Config{
@@ -59,6 +62,7 @@ dropRow:
 				Fs:        appFs,
 			},
 			expectedRules: &rules.Rules{
+				Fs: appFs,
 				SwapColumn: []rules.SwapColumnRule{
 					{
 						OriginIndex: 1,
@@ -81,10 +85,10 @@ dropRow:
 				},
 				DropRow: []rules.DropRowRule{
 					{
-						Regexp: "pattern1",
+						Substring: "pattern1",
 					},
 					{
-						Regexp: "pattern2",
+						Substring: "pattern2",
 					},
 				},
 			},
@@ -100,20 +104,8 @@ dropRow:
 			}
 
 			actualRules, err := rules.Parse(tc.inputCfg)
-
-			if !tc.expectedErr && err != nil {
-				t.Fatalf("Unexpected error %v", err)
-			}
-			if tc.expectedErr {
-				if err == nil {
-					t.Fatalf("Expected error didn't happen")
-				}
-				if tc.expectedErrMsg == "" {
-					t.Fatalf("Expected error message not defined")
-				}
-				if !strings.HasPrefix(err.Error(), tc.expectedErrMsg) {
-					t.Fatalf("Wrong error, expected %q, got %q", tc.expectedErrMsg, err.Error())
-				}
+			if err := testutils.CheckError(err, tc.expectedErr, tc.expectedErrMsg); err != nil {
+				t.Fatalf(err.Error())
 			}
 
 			if !reflect.DeepEqual(actualRules, tc.expectedRules) {
@@ -126,17 +118,202 @@ dropRow:
 func Test_Apply(t *testing.T) {
 
 	tcs := []struct {
-		description string
+		description       string
+		inputRules        *rules.Rules
+		inputCsv          string
+		expectedErr       bool
+		expectedErrMsg    string
+		expectedOutputCsv string
 	}{
 		{
-			description: "",
+			description:    "swap column origin index out of bounds",
+			expectedErr:    true,
+			expectedErrMsg: "Swap column origin index out of bounds",
+			inputCsv: `field0,field1
+value0,value1
+`,
+			inputRules: &rules.Rules{
+				Fs: appFs,
+				SwapColumn: []rules.SwapColumnRule{
+					{
+						OriginIndex: 10,
+					},
+				},
+			},
+		},
+		{
+			description:    "swap column target index out of bounds",
+			expectedErr:    true,
+			expectedErrMsg: "Swap column target index out of bounds",
+			inputCsv: `field0,field1
+value0,value1
+`,
+			inputRules: &rules.Rules{
+				Fs: appFs,
+				SwapColumn: []rules.SwapColumnRule{
+					{
+						TargetIndex: 10,
+					},
+				},
+			},
+		},
+		{
+			description: "swap column happy path",
+			inputCsv: `field0,field1,field2
+value00,value01,value02
+value10,value11,value12
+value20,value21,value22
+`,
+			inputRules: &rules.Rules{
+				Fs: appFs,
+				SwapColumn: []rules.SwapColumnRule{
+					{
+						OriginIndex: 0,
+						TargetIndex: 2,
+					},
+				},
+			},
+			expectedOutputCsv: `field2,field1,field0
+value02,value01,value00
+value12,value11,value10
+value22,value21,value20
+`,
+		},
+		{
+			description:    "rename column index out of bounds",
+			expectedErr:    true,
+			expectedErrMsg: "Rename column index out of bounds",
+			inputCsv: `field0,field1
+value0,value1
+`,
+			inputRules: &rules.Rules{
+				Fs: appFs,
+				RenameColumn: []rules.RenameColumnRule{
+					{
+						Index: 10,
+					},
+				},
+			},
+		},
+		{
+			description:    "rename column empty name",
+			expectedErr:    true,
+			expectedErrMsg: "Rename column empty name",
+			inputCsv: `field0,field1
+value0,value1
+`,
+			inputRules: &rules.Rules{
+				Fs: appFs,
+				RenameColumn: []rules.RenameColumnRule{
+					{
+						Name: "",
+					},
+				},
+			},
+		},
+		{
+			description: "rename column happy path",
+			inputCsv: `field0,field1,field2
+value00,value01,value02
+value10,value11,value12
+value20,value21,value22
+`,
+			inputRules: &rules.Rules{
+				Fs: appFs,
+				RenameColumn: []rules.RenameColumnRule{
+					{
+						Index: 0,
+						Name:  "newName",
+					},
+				},
+			},
+			expectedOutputCsv: `newName,field1,field2
+value00,value01,value02
+value10,value11,value12
+value20,value21,value22
+`,
+		},
+		{
+			description: "drop row happy path",
+			inputCsv: `field0,field1,field2
+value00,value01,value02
+value10,value_somestring_11,value12
+value20,value21,value22
+`,
+			inputRules: &rules.Rules{
+				Fs: appFs,
+				DropRow: []rules.DropRowRule{
+					{
+						Substring: "somestring",
+					},
+				},
+			},
+			expectedOutputCsv: `field0,field1,field2
+value00,value01,value02
+value20,value21,value22
+`,
+		},
+		{
+			description: "complete example",
+			inputCsv: `field0,field1,field2
+value00,value01,value02
+value10,value_somestring_11,value12
+value20,value21,value22
+value30,value_someotherstring_31,value32
+`,
+			inputRules: &rules.Rules{
+				Fs: appFs,
+				SwapColumn: []rules.SwapColumnRule{
+					{
+						OriginIndex: 0,
+						TargetIndex: 2,
+					},
+				},
+				RenameColumn: []rules.RenameColumnRule{
+					{
+						Index: 0,
+						Name:  "newName0",
+					},
+					{
+						Index: 1,
+						Name:  "newName1",
+					},
+				},
+				DropRow: []rules.DropRowRule{
+					{
+						Substring: "somestring",
+					},
+					{
+						Substring: "someotherstring",
+					},
+				},
+			},
+			expectedOutputCsv: `newName0,newName1,field0
+value02,value01,value00
+value22,value21,value20
+`,
 		},
 	}
 
 	for _, tc := range tcs {
 		tc := tc
 		t.Run(tc.description, func(t *testing.T) {
+			reader := csv.NewReader(strings.NewReader(tc.inputCsv))
 
+			var output bytes.Buffer
+			bufWriter := bufio.NewWriter(&output)
+			writer := csv.NewWriter(bufWriter)
+
+			err := tc.inputRules.Apply(*reader, *writer)
+
+			if err := testutils.CheckError(err, tc.expectedErr, tc.expectedErrMsg); err != nil {
+				t.Fatalf(err.Error())
+			}
+
+			actualOutputCsv := output.String()
+			if actualOutputCsv != tc.expectedOutputCsv {
+				t.Fatalf("Actual csv %#v don't match expected csv %#v", actualOutputCsv, tc.expectedOutputCsv)
+			}
 		})
 	}
 }
